@@ -1,0 +1,28 @@
+# Copy to .github/workflows/price-index.yml in the PUBLIC "joistlogic-data"
+# repo (see docs/PRICING.md). Runs monthly after BLS publishes the PPI,
+# commits price_index.json, and GitHub Pages serves it to the app.
+name: Update price index
+on:
+  schedule:
+    - cron: "0 14 20 * *"   # 20th of each month, 14:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch latest PPI values
+        env:
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+        run: python update_price_index.py price_index.json
+      - name: Commit if changed
+        run: |
+          git config user.name "price-bot"
+          git config user.email "price-bot@users.noreply.github.com"
+          git add price_index.json
+          git diff --cached --quiet || git commit -m "Price index $(date +%Y-%m)" && git push
