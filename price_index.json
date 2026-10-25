@@ -1,9 +1,9 @@
 {
   "asOf": "2026-09",
-  "source": "BLS PPI (initial values from FRED, Sep 2026)",
+  "source": "BLS PPI via FRED",
   "series": {
-    "WPU081": 282.340,
-    "WPU083": 303.660,
+    "WPU081": 282.34,
+    "WPU083": 303.66,
     "WPU137": 488.936,
     "WPU1333": 395.319,
     "WPU133": 410.255,
