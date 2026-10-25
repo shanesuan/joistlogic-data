@@ -19,6 +19,7 @@ jobs:
       - name: Fetch latest PPI values
         env:
           BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python update_price_index.py price_index.json
       - name: Commit if changed
         run: |

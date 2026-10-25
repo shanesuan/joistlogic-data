@@ -9,8 +9,9 @@ The app scales its built-in prices by latest / base for each category.
 
 Data sources, in order:
   1. BLS Public Data API v2 (set BLS_API_KEY; free at https://data.bls.gov/registrationEngine/)
-  2. BLS Public Data API v1 (no key, 25 requests/day)
-  3. FRED CSV download (no key)
+  2. FRED API (set FRED_API_KEY; free at https://fredaccount.stlouisfed.org/apikeys)
+  3. BLS Public Data API v1 (no key, 25 requests/day)
+  4. FRED CSV download (no key)
 
 Run:  python tools/pricing/update_price_index.py out/price_index.json
 """
@@ -19,11 +20,12 @@ import io
 import json
 import os
 import sys
+import time
 import urllib.request
 
 SERIES = ["WPU081", "WPU083", "WPU137", "WPU1333", "WPU133",
           "WPU1361", "WPU1392", "WPU0621", "WPU07", "WPU10"]
-UA = {"User-Agent": "JoistLogic price index updater", "Content-Type": "application/json"}
+UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) JoistLogic-price-index/1.0", "Content-Type": "application/json", "Accept": "*/*"}
 
 
 def _latest_from_bls(payload):
@@ -56,12 +58,40 @@ def from_bls(version):
     return _latest_from_bls(payload)
 
 
+def _get(url, tries=3):
+    last = None
+    for i in range(tries):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120) as r:
+                return r.read().decode()
+        except Exception as e:  # retry slow or flaky responses
+            last = e
+            time.sleep(5 * (i + 1))
+    raise last
+
+
+def from_fred_api():
+    key = os.environ.get("FRED_API_KEY")
+    if not key:
+        return {}, None
+    out, as_of = {}, None
+    for sid in SERIES:
+        data = json.loads(_get("https://api.stlouisfed.org/fred/series/observations"
+                               f"?series_id={sid}&api_key={key}&file_type=json&sort_order=desc&limit=3"))
+        for o in data.get("observations", []):
+            if o.get("value") not in (".", ""):
+                out[sid] = float(o["value"])
+                month = o["date"][:7]
+                as_of = month if as_of is None or month < as_of else as_of
+                break
+    return out, as_of
+
+
 def from_fred():
     out, as_of = {}, None
     for sid in SERIES:
-        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"
-        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
-            rows = [row for row in csv.reader(io.StringIO(r.read().decode())) if row]
+        text = _get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}&cosd=2025-01-01")
+        rows = [row for row in csv.reader(io.StringIO(text)) if row]
         for date, value in reversed(rows[1:]):
             if value not in (".", ""):
                 out[sid] = float(value)
@@ -73,7 +103,7 @@ def from_fred():
 
 def main(path):
     errors = []
-    for name, fn in (("BLS v2", lambda: from_bls(2)), ("BLS v1", lambda: from_bls(1)), ("FRED", from_fred)):
+    for name, fn in (("BLS v2", lambda: from_bls(2)), ("FRED API", from_fred_api), ("BLS v1", lambda: from_bls(1)), ("FRED", from_fred)):
         try:
             series, as_of = fn()
         except Exception as e:  # network or API error: try the next source
