@@ -7,6 +7,14 @@ category (the series in lib/core/pricing/price_book.dart) and writes:
 
 The app scales its built-in prices by latest / base for each category.
 
+The file may also carry hand-kept price corrections, which this script
+keeps as they are:
+
+    "items": {"hardware:post-base-cap": 85, "door:prehung:int": {"price": 200, "unit": "pc"}}
+
+Each is today's price for one material key (or every key under a prefix
+such as door:prehung:int), used in place of the built-in price.
+
 Data sources, in order:
   1. BLS Public Data API v2 (set BLS_API_KEY; free at https://data.bls.gov/registrationEngine/)
   2. FRED API (set FRED_API_KEY; free at https://fredaccount.stlouisfed.org/apikeys)
@@ -114,8 +122,18 @@ def main(path):
             errors.append(f"{name}: missing {missing}")
             continue
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        # Keep the hand-kept price corrections ("items") from the old file.
+        items = {}
+        try:
+            with open(path, encoding="utf-8") as f:
+                items = json.load(f).get("items", {})
+        except (OSError, ValueError):
+            pass
+        out = {"asOf": as_of, "source": f"BLS PPI via {name}", "series": series}
+        if items:
+            out["items"] = items
         with open(path, "w", encoding="utf-8") as f:
-            json.dump({"asOf": as_of, "source": f"BLS PPI via {name}", "series": series}, f, indent=2)
+            json.dump(out, f, indent=2)
         print(f"Wrote {path} ({name}, as of {as_of})")
         return 0
     print("Could not update the price index:\n  " + "\n  ".join(errors), file=sys.stderr)
